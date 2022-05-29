@@ -1,0 +1,112 @@
+---
+title: "main"
+author: "moonmodule"
+date: "5/29/2022"
+output: html_document
+---
+тут будет основной файл с веб-сервиом для отображения результатов гидродинамического моделирования дельты Волги
+
+```{r}
+library(shiny)
+library(tidyverse)
+library(lubridate)
+library(dplyr)
+library(readxl)
+library(plotly)
+```
+
+```{r}
+file = read_excel('data/Model_output_2018.xlsx')
+
+VL = filter(file, River == 'Volga', Reach == '1.1', River_Sta == '61916.32')
+Narimanov = filter(file, River == 'Volga', Reach == '1.2', River_Sta == '51294.9')
+Astrakhan = filter(file, River == 'Volga', Reach == '1.5', River_Sta == '18.92666')
+Buzan = filter(file, River == 'Buzan', Reach == '2.1', River_Sta == '46742.05')
+KrYar = filter(file, River == 'Buzan', River_Sta == '51.01591')
+
+full = rbind(VL, Narimanov, Astrakhan, Buzan, KrYar)
+
+final = data.frame('Date' = VL$Date, 'VL' = VL$Q_Channel, 
+                   'Narimanov' = Narimanov$Q_Channel,
+                   'Astrakhan' = Astrakhan$Q_Channel,
+                   'Buzan' = Buzan$Q_Channel,
+                   'KrYar' = KrYar$Q_Channel)
+```
+
+
+Дальше вот это вот ваше Шайни:
+
+```{r}
+histogramName <- c("VL", "Narimanov", "Astrakhan", "Buzan", 'KrYar')
+
+ui <- fluidPage(
+  
+  # Title 
+  titlePanel(
+    h1("Delta Volga modelling Dataset", style = "padding-bottom: 20px")
+  ),
+  
+  # Sidebar layout
+  sidebarLayout(
+    sidebarPanel(
+      dateRangeInput(
+        'dateRange',
+        label = paste('Date range'),
+        start = "2019-01-02", end = "2019-12-30",
+        min = "2019-01-02", max = "2019-12-30",
+        separator = " to ", format = "dd/mm/yyyy",
+        startview = 'month', weekstart = 1
+      ),
+     
+    ),
+    mainPanel(
+      plotlyOutput(outputId = "timeSeries"),
+     
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  
+  # Filter data based on selections
+  output$dataTable <- DT::renderDataTable(DT::datatable({
+    final %>%
+      filter(
+        between(
+          Date, 
+          as_datetime(as.character(input$dateRange[1])), 
+          as_datetime(as.character(input$dateRange[2]))
+        )
+      )
+  }))
+  
+  # Time series for Q
+  output$timeSeries <- renderPlotly({
+    final |>  
+      filter(
+        between(
+          Date, 
+          as_datetime(as.character(input$dateRange[1])), 
+          as_datetime(as.character(input$dateRange[2]))
+        )
+      ) |> 
+      plot_ly(
+        x = ~Date, 
+        y = ~VL, 
+        type = 'scatter', 
+        mode = 'lines',
+        line = list(color = '#251d5a', width = 1.5)
+      ) |> 
+      layout(
+        title = "Q, cubic m per second",
+        xaxis = list(title = "Date"),
+        yaxis = list(title = "Q")
+      )
+  })
+  
+  
+}
+
+shinyApp(ui = ui, server = server)
+```
+
