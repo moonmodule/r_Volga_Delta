@@ -13,10 +13,14 @@ library(lubridate)
 library(dplyr)
 library(readxl)
 library(plotly)
+library(leaflet)
+library(ggplot2)
 ```
 
 ```{r}
 file = read_excel('data/Model_output_2018.xlsx')
+
+points = read_excel('data/posts.xlsx')
 
 VL = filter(file, River == 'Volga', Reach == '1.1', River_Sta == '61916.32')
 Narimanov = filter(file, River == 'Volga', Reach == '1.2', River_Sta == '51294.9')
@@ -37,8 +41,6 @@ final = data.frame('Date' = VL$Date, 'VL' = VL$Q_Channel,
 Дальше вот это вот ваше Шайни:
 
 ```{r}
-histogramName <- c("VL", "Narimanov", "Astrakhan", "Buzan", 'KrYar')
-
 ui <- fluidPage(
   
   # Title 
@@ -60,28 +62,37 @@ ui <- fluidPage(
      
     ),
     mainPanel(
-      plotlyOutput(outputId = "timeSeries"),
-     
+      textOutput('locationid1'),
+      leafletOutput("map"),
+      plotOutput(outputId = "timeSeries")
     )
   )
 )
 
 server <- function(input, output, session) {
   
-  # Filter data based on selections
-  output$dataTable <- DT::renderDataTable(DT::datatable({
-    final %>%
-      filter(
-        between(
-          Date, 
-          as_datetime(as.character(input$dateRange[1])), 
-          as_datetime(as.character(input$dateRange[2]))
-        )
-      )
-  }))
+  
+  
+    output$map <- renderLeaflet({
+    points |> leaflet() |> 
+    addTiles() |> 
+    addMarkers(layerId = ~Station)
+
+  })
+  
+  id1 <- reactive({
+     validate(
+       need(!is.null(input$map_marker_click), "Please select a location from the map above")
+     )
+    input$map_marker_click$id
+  })
+
+  output$locationid1 <- renderText({paste("Location Selected using marker click:", id1())})
+  
+
   
   # Time series for Q
-  output$timeSeries <- renderPlotly({
+  output$timeSeries <- renderPlot({
     final |>  
       filter(
         between(
@@ -90,22 +101,17 @@ server <- function(input, output, session) {
           as_datetime(as.character(input$dateRange[2]))
         )
       ) |> 
-      plot_ly(
-        x = ~Date, 
-        y = ~VL, 
-        type = 'scatter', 
-        mode = 'lines',
-        line = list(color = '#251d5a', width = 1.5)
-      ) |> 
-      layout(
-        title = "Q, cubic m per second",
-        xaxis = list(title = "Date"),
-        yaxis = list(title = "Q")
-      )
+      ggplot(aes_string(final$Date, input$map_marker_click$id)) + geom_line()
+    
   })
   
+ 
+  
+
+
   
 }
+
 
 shinyApp(ui = ui, server = server)
 ```
